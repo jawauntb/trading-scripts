@@ -1,0 +1,31 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator(title="Long Term Alpha Indicator", overlay=false)
+
+// Define EMA lengths
+length1 = 110
+length2 = 30
+length3 = 8
+
+
+// Define the weighted alpha
+price_change = close - ((high + low + close) / 3)
+
+weighted_alpha = ta.sma(price_change * volume, length1)
+
+// Calculate the EMA of the weighted alpha for the defined lengths
+ema1 = ta.ema(weighted_alpha, length1)
+ema2 = ta.ema(weighted_alpha, length2)
+ema3 = ta.ema(weighted_alpha, length3)
+
+// Normalize to start from 50 and go unbounded
+normalized_ema1 = 50 + (ema1 / ta.highest(ema1, length1) * 50)
+normalized_ema2 = 50 + (ema2 / ta.highest(ema2, length2) * 50)
+normalized_ema3 = 50 + (ema3 / ta.highest(ema3, length3) * 50)
+
+// Plot the results
+plot(normalized_ema1, color=color.rgb(127, 8, 8), linewidth=5, title="EMA 110 of Weighted Alpha")
+plot(normalized_ema2, color=color.rgb(7, 68, 119), linewidth=4, title="EMA 30 of Weighted Alpha")
+plot(normalized_ema3, color=color.rgb(8, 98, 11), linewidth=3, title="EMA 8 of Weighted Alpha")
