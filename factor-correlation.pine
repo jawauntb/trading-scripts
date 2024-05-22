@@ -1,0 +1,147 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator(title="Factor Indicator: Correlation with Price Change in Next 10 Bars", shorttitle = 'FXI', overlay=false)
+
+// Function to calculate correlation of an indicator with future price change
+factorCorrelation(factor) =>
+    pastFactorChange = factor[15] - factor[20] // Change in indicator over the first 5 bars of the past 20 bars
+    futurePriceChange = close - close[10] // Net price change over the next 10 bars
+    correlation = ta.correlation(pastFactorChange, futurePriceChange, 20) // 20-bar rolling correlation
+    correlation
+
+//13-30 EMA Calculation
+short = ta.ema(close, 13)
+long = ta.sma(close, 30)
+crossoverFactor = short - long
+
+// Skew Calculation
+SkewLength = input(30)
+
+deviation_max = 1.
+deviation_min = 1.
+
+alpha = 2.0/(1.0+SkewLength)
+
+trueRange = math.max(math.max(high - low, math.abs(high - close[1])), math.abs(low - close[1]))/close[1]
+
+deviation_max := alpha*(close > close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_max[1])
+deviation_min := alpha*(close < close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_min[1])
+
+skewValue = deviation_max/deviation_min
+
+
+// Donchian Channel Calculation
+length = input.int(20, minval=1)
+lower = ta.lowest(length)
+upper = ta.highest(length)
+basis = (upper + lower) / 2.0
+
+// Keltner Channel Calculation
+lengthkc = input.int(20, minval=1)
+mult = input(2.0, "Multiplier")
+src = input(close, title="Source")
+exp = input(true, "Use Exponential MA")
+BandsStyle = input.string("Average True Range", options = ["Average True Range", "True Range", "Range"], title="Bands Style")
+atrlength = input(10, "ATR Length")
+
+esma(source, lengthk)=>
+	s = ta.sma(source, lengthk)
+	e = ta.ema(source, lengthk)
+	exp ? e : s
+
+kcma = esma(src, lengthkc)
+
+// Inputs for VWAP settings
+anchor = input.string(defval = "Session", title="Anchor Period",
+ options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century", "Earnings", "Dividends", "Splits"])
+
+srcvw = input(close, title = "Source")
+
+// Determine the start of a new period based on the selected anchor
+isNewPeriod = switch anchor
+	"Session"   => timeframe.change("D")
+	"Week"      => timeframe.change("W")
+	"Month"     => timeframe.change("M")
+	"Quarter"   => timeframe.change("3M")
+	"Year"      => timeframe.change("12M")
+	"Decade"    => timeframe.change("12M") and year % 10 == 0
+	"Century"   => timeframe.change("12M") and year % 100 == 0
+	// Note: The earnings, dividends, and splits anchor types were ignored for simplicity.
+	=> false
+
+float vwapValue = na
+
+// Calculate the VWAP value
+[_vwap, _, _] = ta.vwap(srcvw, isNewPeriod, 1)
+
+vwapValue := _vwap
+// Calculate the price relative to VWAP
+priceRelativeToVWAP = close - vwapValue
+
+
+// TWAP calculation
+anchortw = input.timeframe(defval = "1D", title="Anchor Period")
+srctw = input(title = "Source", defval = ohlc4)
+offset = input(0, title="Offset")
+
+twap(source, anchorChange) =>
+    var prices = 0.0
+    var count = 0
+
+    if anchorChange
+        prices := 0
+        count := 0
+
+    prices += src
+    count += 1
+
+    prices / count
+
+twapValue = twap(srctw, timeframe.change(anchortw))
+
+// Calculate the price's distance from the TWAP
+priceRelativeToTwap = close - twapValue
+
+
+// Correlation Calculation for the Donchian Channel's basis
+correlationValueDonchian = factorCorrelation(basis)
+
+// Correlation Calculation for the Skew
+correlationValueSkew = factorCorrelation(skewValue)
+
+// Correlation Calculation for the EMA
+correlation1330EmaMaValue = factorCorrelation(crossoverFactor)
+
+// Correlation Calculation for the Keltner Channel's MA
+correlationValueKeltner = factorCorrelation(kcma)
+
+// Correlation Calculation for the Price relative to VWAP
+correlationValueVWAP = factorCorrelation(priceRelativeToVWAP)
+
+correlationTWAP = factorCorrelation(priceRelativeToTwap)
+
+// Plotting the Correlation of the EMA
+histogramColor = correlation1330EmaMaValue >= 0 ? color.rgb(231, 228, 39) : color.rgb(154, 146, 0)
+plot(correlation1330EmaMaValue, color=histogramColor, linewidth=1, title="EMA Cross Correlation")
+
+// Plotting the Correlation of the Skew
+histogramColorSkew = correlationValueSkew >= 0 ? color.rgb(4, 213, 255) : color.rgb(0, 87, 117)
+plot(correlationValueSkew, color=histogramColorSkew, linewidth=1, title="Skew Correlation")
+
+// Plotting the Correlation of the Donchian Channel's basis
+histogramColorDonchian = correlationValueDonchian >= 0 ? color.rgb(38, 4, 230) : color.rgb(28, 18, 86)
+plot(correlationValueDonchian, color=histogramColorDonchian, linewidth=1, title="Donchian Basis Correlation")
+
+// Plotting the Correlation of the Keltner Channel's MA
+histogramColorKeltner = correlationValueKeltner >= 0 ? color.rgb(251, 136, 3) : color.rgb(255, 136, 56)
+plot(correlationValueKeltner, color=histogramColorKeltner, linewidth=1, title="Keltner MA Correlation")
+
+// Plotting the Correlation of Price relative to VWAP
+histogramColorVWAP = correlationValueVWAP >= 0 ? color.rgb(255, 154, 250) : color.rgb(240, 74, 240)
+plot(correlationValueVWAP, color=histogramColorVWAP, linewidth=1, title="Price to VWAP Correlation")
+
+// Plotting the Correlation of Price relative to TWAP
+histogramColorTWAP = correlationValueVWAP >= 0 ? color.rgb(84, 255, 109) : color.rgb(27, 111, 30)
+plot(correlationTWAP, color=histogramColorTWAP, linewidth=1, title="Price Relative to TWAP Correlation")
