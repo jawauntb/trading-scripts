@@ -1,0 +1,83 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Short Term Alpha indicator", shorttitle="AI", overlay=false)
+
+// Define lengths for EMAs and other parameters
+lenFast = 8
+lenMedium = 30
+lenSlow = 110
+maPeriod = 20
+
+// NADO parameters
+length_nado = 14
+mult = 1.0
+
+// Define the weighted alpha
+price_change = close - ((high + low + close) / 3)
+weighted_alpha = ta.sma(price_change * volume, lenSlow)
+
+// Calculate the EMA of the weighted alpha for the defined lengths
+emaFast = ta.ema(weighted_alpha, lenFast)
+emaMedium = ta.ema(weighted_alpha, lenMedium)
+emaSlow = ta.ema(weighted_alpha, lenSlow)
+
+// EMA bumps
+rocFast = emaFast - emaFast[1]
+rocMedium = emaMedium - emaMedium[1]
+rocSlow = emaSlow - emaSlow[1]
+
+// Define Sinusoidal/Trend and Noise Components
+trend = ta.sma(close, length_nado)
+volatility = ta.stdev(close, length_nado) * mult
+
+// Define Transient Component
+roc = ta.roc(close, length_nado)
+transient = math.abs(roc) > volatility ? roc : na
+
+// Percentile Rank Calculation Function
+pctrank(series, period) =>
+    lessThanCount = 0.0
+    for i = 0 to period - 1
+        if na(series[i]) or na(series)
+            lessThanCount := na
+            break
+        else
+            lessThanCount := series[i] < series ? lessThanCount + 1 : lessThanCount
+    na(lessThanCount) ? na : lessThanCount / period * 100
+
+// Normalized Components
+normalizedTrend = pctrank(trend, length_nado)
+normalizedVolatility = pctrank(volatility, length_nado)
+nadoFunction = (normalizedTrend + normalizedVolatility) / 2
+
+// Compute the percentile rank of the EMA bumps over a certain period
+prFast = pctrank(rocFast, lenFast)
+prMedium = pctrank(rocMedium, lenMedium)
+prSlow = pctrank(rocSlow, lenSlow)
+
+// Compute a moving average of these percentile ranks
+maFast = ta.sma(prFast, maPeriod)
+maMedium = ta.sma(prMedium, maPeriod)
+maSlow = ta.sma(prSlow, maPeriod)
+
+// Compute the final signal
+signalFast = (prFast - maFast) * nadoFunction
+signalMedium = (prMedium - maMedium) * nadoFunction
+signalSlow = (prSlow - maSlow) * nadoFunction
+
+// Compute the midline
+midline = (signalFast + signalMedium + signalSlow) / 3
+
+// Calculate a 20% kicker based on averages from 3 slower periods
+kicker = midline * 0.20 * ((emaSlow / ta.sma(emaSlow, lenSlow)) + (emaMedium / ta.sma(emaMedium, lenMedium)) + (emaFast / ta.sma(emaFast, lenFast))) / 3
+
+// Add kicker to the midline
+finalMidline = midline + kicker
+
+// Plot the signals and the final midline
+plot(signalFast, color=color.green, title="Signal Fast")
+plot(signalMedium, color=color.blue, title="Signal Medium")
+plot(signalSlow, color=color.red, title="Signal Slow")
+plot(finalMidline, color=color.black, title="Final Midline")
