@@ -1,0 +1,64 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Average Bars Before Reversion", shorttitle="ABSR", overlay=false)
+
+// Define lengths for EMAs and other parameters
+lenSuperFast = 2
+lenFast = 8
+lenAverage = 14
+lenMedium = 30
+lenSlow = 110
+SkewLength = 30
+alpha = 2.0/(1.0+SkewLength)
+deviation_max = 1.
+deviation_min = 1.
+
+trueRange = math.max(math.max(high - low, math.abs(high - close[1])), math.abs(low - close[1]))/close[1]
+deviation_max := alpha*(close > close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_max[1])
+deviation_min := alpha*(close < close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_min[1])
+
+// Calculate skew
+skew = deviation_max/deviation_min
+
+// Calculate the EMA of the skew for the defined lengths
+emaSuperFast = ta.ema(skew, lenSuperFast)
+emaFast = ta.ema(skew, lenFast)
+emaAverage = ta.ema(skew, lenAverage)
+emaMedium = ta.ema(skew, lenMedium)
+emaSlow = ta.ema(skew, lenSlow)
+
+// Initialize an array for each EMA to store the number of bars before reversion
+barsBeforeReversionSuperFast = array.new_float(0)
+barsBeforeReversionFast = array.new_float(0)
+barsBeforeReversionAverage = array.new_float(0)
+barsBeforeReversionMedium = array.new_float(0)
+barsBeforeReversionSlow = array.new_float(0)
+
+// Iterate over each bar
+for i = 0 to lenSlow
+    if (skew[i] > emaSuperFast[i] and skew[i+1] < emaSuperFast[i+1])
+        array.push(barsBeforeReversionSuperFast, i)
+    if (skew[i] > emaFast[i] and skew[i+1] < emaFast[i+1])
+        array.push(barsBeforeReversionFast, i)
+    if (skew[i] > emaAverage[i] and skew[i+1] < emaAverage[i+1])
+        array.push(barsBeforeReversionAverage, i)
+    if (skew[i] > emaMedium[i] and skew[i+1] < emaMedium[i+1])
+        array.push(barsBeforeReversionMedium, i)
+    if (skew[i] > emaSlow[i] and skew[i+1] < emaSlow[i+1])
+        array.push(barsBeforeReversionSlow, i)
+
+// Calculate the average number of bars before reversion for each EMA
+avgBarsBeforeReversionSuperFast = array.avg(barsBeforeReversionSuperFast)
+avgBarsBeforeReversionFast = array.avg(barsBeforeReversionFast)
+avgBarsBeforeReversionAverage = array.avg(barsBeforeReversionAverage)
+avgBarsBeforeReversionMedium = array.avg(barsBeforeReversionMedium)
+avgBarsBeforeReversionSlow = array.avg(barsBeforeReversionSlow)
+
+// Plot the average number of bars before reversion for each EMA
+plot(avgBarsBeforeReversionSuperFast, color=color.rgb(75, 234, 252), title="Average Bars Before Reversion Super Fast", linewidth = 2)
+plot(avgBarsBeforeReversionFast, color=color.rgb(10, 239, 18), title="Average Bars Before Reversion Fast", linewidth = 2)
+plot(avgBarsBeforeReversionAverage, color=color.rgb(255, 165, 0), title="Average Bars Before Reversion Average", linewidth = 2)
+plot(avgBarsBeforeReversionMedium, color=color.rgb(31, 34, 134), title="Average Bars Before Reversion Medium", linewidth = 2)
+plot(avgBarsBeforeReversionSlow, color=color.rgb(198, 45, 45), title="Average Bars Before Reversion Slow", linewidth = 2)
