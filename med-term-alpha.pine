@@ -1,0 +1,34 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator(title="Mid Term Alpha Indicator", overlay=false)
+
+// Define EMA lengths
+length1 = 50
+length2 = 20
+length3 = 5
+
+// Define the weighted alpha
+price_change = close - ((high + low + close) / 3)
+weighted_alpha = ta.sma(price_change * volume, length1)
+
+// Calculate the EMA of the weighted alpha for the defined lengths
+ema1 = ta.ema(weighted_alpha, length1)
+ema2 = ta.ema(weighted_alpha, length2)
+ema3 = ta.ema(weighted_alpha, length3)
+
+// Calculate the rate of change of the EMAs
+roc1 = ema1 - ema1[1]
+roc2 = ema2 - ema2[1]
+roc3 = ema3 - ema3[1]
+
+// Normalize to start from 50 and go unbounded
+normalized_ema1 = 50 + (roc1 / ta.highest(roc1, length1) * 50)
+normalized_ema2 = 50 + (roc2 / ta.highest(roc2, length2) * 50)
+normalized_ema3 = 50 + (roc3 / ta.highest(roc3, length3) * 50)
+
+// Plot the results
+plot(normalized_ema1, color=color.rgb(201, 85, 85),title="ROC EMA 50 of Weighted Alpha", linewidth = 5)
+plot(normalized_ema2, color=color.rgb(117, 166, 207), title="ROC EMA 20 of Weighted Alpha", linewidth = 4)
+plot(normalized_ema3, color=color.rgb(92, 127, 94), title="ROC EMA 5 of Weighted Alpha", linewidth = 3)
