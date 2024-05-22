@@ -1,0 +1,41 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Normalized Advanced Decomposition Oscillator", shorttitle="NADO", overlay=false)
+
+// Parameters
+length = input(14, title="Length")
+mult = input(1.0, title="Multiplier")
+
+// Sinusoidal/Trend Component
+trend = ta.sma(close, length)
+
+// Noise Component: Measure volatility as a proxy for noise
+volatility = ta.stdev(close, length) * mult
+
+// Transient Component: We'll use Rate of Change but only focus on significant changes
+roc = ta.roc(close, length)
+transient = math.abs(roc) > volatility ? roc : na
+
+// Percentile Rank Calculation Function
+pctrank(series, period) =>
+    lessThanCount = 0.0
+    for i = 0 to period - 1
+        if na(series[i]) or na(series)
+            lessThanCount := na
+            break
+        else
+            lessThanCount := series[i] < series ? lessThanCount + 1 : lessThanCount
+    na(lessThanCount) ? na : lessThanCount / period * 100
+
+// Normalized Components
+normalizedTrend = pctrank(trend, length)
+normalizedVolatility = pctrank(volatility, length)
+normalizedTransient = pctrank(transient, length)
+
+// Plotting
+plot(normalizedTrend, color=color.blue, title="Normalized Trend")
+plot(normalizedVolatility, color=color.red, title="Normalized Volatility (Noise)")
+plot(normalizedTransient, color=color.green, title="Normalized Transient")
+hline(50, "Center", color=color.gray, linestyle=hline.style_dashed)
