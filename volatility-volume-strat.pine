@@ -1,0 +1,126 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("Composite RVI CVD Strategy", overlay=true, calc_on_every_tick = true)
+
+// Inputs
+rsiPeriod = input(14, "RSI Period")
+emaPeriod = input(13, "EMA Period")
+maPeriod = input(30, "MA Period")
+vwapSource = input(hlc3, "VWAP Source")
+longStopLossPerc = input(0.05, "Long Stop Loss %")
+longTakeProfitPerc = input(0.1, "Long Take Profit %")
+shortStopLossPerc = input(0.05, "Short Stop Loss %") 
+shortTakeProfitPerc = input(0.1, "Short Take Profit %")
+
+// Composite Index
+rsiSource = close
+rsiDelta = ta.rsi(rsiSource, rsiPeriod) - ta.rsi(rsiSource, rsiPeriod)[9]
+rsiSma = ta.sma(ta.rsi(rsiSource, 3), 3)
+compIndex = rsiDelta + rsiSma
+
+// CVD Volume
+[upVolume, dnVolume] = request.security_lower_tf(syminfo.tickerid, "1", [volume, volume])
+cvdVolume = array.get(upVolume, 0) - array.get(dnVolume, 0)
+
+// EMA and MA
+ema13 = ta.ema(close, emaPeriod)
+ma30 = ta.sma(close, maPeriod)
+
+// VWAP
+vwap = ta.vwap(vwapSource)
+
+// RVI
+length = 10
+src = close
+stddev = ta.stdev(src, length)
+upper = ta.ema(ta.change(src) <= 0 ? 0 : stddev, length)
+lower = ta.ema(ta.change(src) > 0 ? 0 : stddev, length)
+rvi = upper / (upper + lower) * 100
+
+// Composite Oscillator Moving Averages
+compositeOscillator = compIndex
+ma13 = ta.sma(compositeOscillator, 13)
+ma33 = ta.sma(compositeOscillator, 33)
+
+// Long Conditions
+longBias1 = ema13 > ma30 and close > ema13 ? 1.3 : 1.0
+longBias2 = compositeOscillator > ma13 and ma13 > ma33 ? 1.265 : 1.0
+longCond1 = compIndex > 45 * longBias1 * longBias2
+longCond2 = compIndex - compIndex[4] > 20 * longBias1 * longBias2
+longCond3 = cvdVolume >= cvdVolume[1] * 0.97 * longBias1 * longBias2 and cvdVolume[1] >= cvdVolume[2] * 0.97 * longBias1 * longBias2 and cvdVolume[2] >= cvdVolume[3] * 0.97 * longBias1 * longBias2
+longCond4 = rvi > rvi[1] * longBias1 * longBias2 and rvi[1] > rvi[2] * longBias1 * longBias2
+
+// Short Conditions
+shortBias1 = close < ema13 ? 1.1 : 1.0
+shortBias2 = close < vwap ? 1.15 : 1.0 
+shortBias3 = close > vwap ? 1.15 : 1.0
+shortBias4 = rvi < 45 ? 1.0 : 0.85
+shortBias5 = ma33 > ma13 ? 1.15 : 1.0
+shortBias6 = compositeOscillator < ma13 and compositeOscillator < ma33 ? 1.3225 : 1.0
+shortCond1 = compIndex < 40 * shortBias1 * shortBias2 * shortBias3 * shortBias4 * shortBias5 * shortBias6
+shortCond2 = ((cvdVolume < cvdVolume[1] * 0.9 or (cvdVolume < cvdVolume[1] and cvdVolume[1] < cvdVolume[2] and cvdVolume[2] < cvdVolume[3])) ? 1.0 : 0.0) * shortBias1 * shortBias2 * shortBias3 * shortBias4 * shortBias5 * shortBias6
+
+
+// Entry Signals
+longSignal = longCond1 and longCond2 and longCond3 and longCond4 
+shortSignal = shortCond1 or shortCond2
+
+// Stop Loss & Take Profit
+longStopLoss = strategy.position_avg_price * (1 - longStopLossPerc)
+longTakeProfit = strategy.position_avg_price * (1 + longTakeProfitPerc)
+shortStopLoss = strategy.position_avg_price * (1 + shortStopLossPerc)
+shortTakeProfit = strategy.position_avg_price * (1 - shortTakeProfitPerc)
+
+// Execution
+if longSignal
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long TP/SL", "Long", stop=longStopLoss, limit=longTakeProfit)
+else if shortSignal
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short TP/SL", "Short", stop=shortStopLoss, limit=shortTakeProfit)
+
+// Plotting
+plotshape(longSignal, location=location.belowbar, style=shape.triangleup, size=size.small, color=color.green)  
+plotshape(shortSignal, location=location.abovebar, style=shape.triangledown, size=size.small, color=color.red)
+plot(compositeOscillator, color=color.blue)
+plot(ma13, color=color.yellow)
+plot(ma33, color=color.red)
+
+// Function to plot individual condition confirmations or breaks
+plotCondition(series, condition, labelTrue, labelFalse, yOffset) =>
+    var label myLabel = na
+    labelText = condition ? labelTrue : labelFalse
+    labelColor = condition ? color.new(color.green, 0) : color.new(color.red, 0)
+    
+    // Detect changes in the condition value
+    conditionChanged = ta.change(condition)
+    
+    if conditionChanged or barstate.islast
+        if (na(myLabel))
+            myLabel := label.new(x=time, y=series + yOffset, text=labelText, style=label.style_label_down, color=labelColor, size=size.small, textcolor=color.white, xloc=xloc.bar_time, yloc=yloc.price)
+        else
+            label.set_xy(myLabel, x=time, y=series + yOffset)  
+            label.set_text(myLabel, text=labelText)
+            label.set_color(myLabel, color=labelColor)
+            label.set_textcolor(myLabel, color.white)
+    myLabel
+
+// Assuming atr is already calculated somewhere in your script
+atrl = ta.atr(14)
+
+// Check and plot each condition separately
+// Momentum Conditions
+plotCondition(close, longCond1, "Momentum: Composite Index > Biased 45", "Momentum: Composite Index <= Biased 45", atrl * 1.75)
+plotCondition(close, longCond2, "Momentum: Composite Index Biased Increase 20 Points", "Momentum: Composite Index No Biased Increase 20 Points", atrl * 2)
+
+// Volume Conditions  
+plotCondition(close, longCond3, "Volume: CVD Volume Biased Consistent Increase or Not Dropped >3%", "Volume: CVD Volume No Biased Consistent Increase or Dropped >3%", atrl * 1.5)
+plotCondition(close, shortCond2, "Volume: CVD Volume Biased Decrease 10% or Bearish 3/4 Bars", "Volume: CVD Volume No Biased Decrease 10% or Not Bearish 3/4 Bars", -atrl * 2)
+
+// Price Conditions
+plotCondition(close, shortCond1, "Price: Composite Index < Biased 40", "Price: Composite Index >= Biased 40", -atrl * 1.5)  
+
+// Trend Conditions
+plotCondition(close, longCond4, "Trend: RVI Biased Increase Last 3 Bars", "Trend: RVI No Biased Increase Last 3 Bars", atrl * 2.3)
