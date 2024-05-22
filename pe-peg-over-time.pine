@@ -1,0 +1,28 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+
+//@version=5
+indicator("PE and PEG Over Time", shorttitle="PE/PEG vs. QQQ", overlay=false)
+
+// Define target stock and QQQ ticker
+targetTicker = syminfo.tickerid
+qqqTicker = "NASDAQ:aapl"
+
+// Fetch earnings per share and price for the target stock
+eps_target = request.financial(targetTicker, "EARNINGS_PER_SHARE_BASIC_ONE_YEAR_GROWTH", "FY")
+peg_target = request.financial(targetTicker, "PEG_RATIO", "FQ")
+pe_target = close / eps_target
+
+// Fetch earnings per share and price for QQQ
+eps_qqq = request.financial(qqqTicker, "EARNINGS_PER_SHARE_BASIC_ONE_YEAR_GROWTH", "FY")
+peg_qqq = request.financial(qqqTicker, "PEG_RATIO", "FQ")
+pe_qqq = close / eps_qqq
+
+// Plot the P/E and PEG for target stock
+plot(pe_target, color=color.rgb(19, 145, 248), linewidth=2, title="P/E Target Stock")
+plot(peg_target, color=color.rgb(118, 223, 255), linewidth=1, title="PEG Target Stock")
+
+// Plot the P/E and PEG for QQQ
+plot(pe_qqq, color=color.rgb(255, 200, 0), linewidth=2, title="P/E QQQ")
+plot(peg_qqq, color=color.rgb(255, 247, 0), linewidth=1, title="PEG QQQ")
