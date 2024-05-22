@@ -1,0 +1,156 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("DFO 3", overlay=false)
+
+// Inputs
+rsiPeriod = input(14, "RSI Period")
+emaPeriod = input(13, "EMA Period")
+maPeriod = input(30, "MA Period")
+vwapSource = input(hlc3, "VWAP Source")
+
+// Composite Index
+rsiSource = close
+rsiDelta = ta.rsi(rsiSource, rsiPeriod) - ta.rsi(rsiSource, rsiPeriod)[9]
+rsiSma = ta.sma(ta.rsi(rsiSource, 3), 3)
+compIndex = rsiDelta + rsiSma
+
+// CVD Volume
+[upVolumes, dnVolumes] = request.security_lower_tf(syminfo.tickerid, "1", [volume, volume])
+float totalUpVolume = nz(upVolumes.sum())
+float totalDnVolume = nz(dnVolumes.sum())
+float maxUpVolume = nz(upVolumes.max())
+float maxDnVolume = nz(dnVolumes.min())
+float totalVolume = totalUpVolume - totalDnVolume
+float delta = totalUpVolume + totalDnVolume
+float deltaPct = delta / totalVolume
+var float cvd = 0.0
+cvd := cvd + delta
+
+// EMA and MA
+ema13 = ta.ema(close, emaPeriod)
+ma30 = ta.sma(close, maPeriod)
+
+// VWAP
+vwap = ta.vwap(vwapSource)
+
+// RVI
+length = 10
+src = close
+stdDevSrc = ta.stdev(src, length)
+upperStdDev = ta.change(src) <= 0 ? 0 : stdDevSrc
+lowerStdDev = ta.change(src) > 0 ? 0 : stdDevSrc
+upper = ta.ema(upperStdDev, length)
+lower = ta.ema(lowerStdDev, length)
+rvi = upper / (upper + lower) * 100
+
+// Momentum component
+momentumLength = 100
+momentumMin = ta.lowest(compIndex, momentumLength)
+momentumMax = ta.highest(compIndex, momentumLength)
+momentumValue = (compIndex - momentumMin) / (momentumMax - momentumMin) * 100
+momentumDelta = momentumValue - momentumValue[3]
+momentumComponent = momentumValue + momentumDelta
+
+// Volume component
+volumeLength = 100
+volumeMin = ta.lowest(cvd, volumeLength)
+volumeMax = ta.highest(cvd, volumeLength)
+volumeValue = (cvd - volumeMin) / (volumeMax - volumeMin) * 100
+volumeDelta = volumeValue - volumeValue[3]
+volumeComponent = volumeValue + volumeDelta
+
+// Price component
+priceLength = 100
+priceMin = ta.lowest(low, priceLength)
+priceMax = ta.highest(high, priceLength)
+priceValue = (close - priceMin) / (priceMax - priceMin) * 100
+priceDelta = priceValue - priceValue[3]
+priceComponent = priceValue + priceDelta
+
+// Trend component
+trendLength = 100
+trendMin = ta.lowest((ema13 - ma30) / ma30, trendLength)
+trendMax = ta.highest((ema13 - ma30) / ma30, trendLength)
+trendValue = ((ema13 - ma30) / ma30 - trendMin) / (trendMax - trendMin) * 100
+trendDelta = trendValue - trendValue[3]
+trendComponent = trendValue + trendDelta
+
+// Combine components
+directionalFlowOscillator = (momentumComponent + volumeComponent + priceComponent + trendComponent + rvi) / 5
+
+// Plot the oscillator and moving averages
+plot(directionalFlowOscillator, color=color.rgb(166, 232, 247), linewidth=3)
+plot(ta.sma(directionalFlowOscillator, 13), color=color.rgb(255, 225, 0), linewidth=2)
+plot(ta.sma(directionalFlowOscillator, 33), color=color.rgb(186, 19, 19), linewidth=2)
+
+// Function to plot individual condition confirmations or breaks
+plotCondition(series, condition, labelTrue, labelFalse, yOffset) =>
+    var label myLabel = na
+    labelText = condition ? labelTrue : labelFalse
+    labelColor = condition ? color.new(color.green, 0) : color.new(color.red, 0)
+    
+    // Detect changes in the condition value
+    conditionChanged = ta.change(condition)
+    
+    if conditionChanged or barstate.islast
+        if (na(myLabel))
+            myLabel := label.new(x=time, y=series + yOffset, text=labelText, style=label.style_label_down, color=labelColor, size=size.small, textcolor=color.white, xloc=xloc.bar_time, yloc=yloc.price)
+        else
+            label.set_xy(myLabel, x=time, y=series + yOffset)
+            label.set_text(myLabel, text=labelText)
+            label.set_color(myLabel, color=labelColor)
+            label.set_textcolor(myLabel, color.white)
+    myLabel
+
+atrl = ta.atr(14)
+
+// Calculate the difference between the fast and middle moving averages
+fastMA = ta.sma(directionalFlowOscillator, 13)
+middleMA = ta.sma(directionalFlowOscillator, 33)
+diff = fastMA - middleMA
+
+// Normalize the difference to a value between -1 and 1
+normalizedDiff = diff / (ta.highest(diff, 100) - ta.lowest(diff, 100))
+
+// Check and plot each condition separately
+// Momentum Conditions
+plotCondition(directionalFlowOscillator, momentumComponent > 50, "Momentum: Bullish", "Momentum: Bearish", atrl*3.5)
+
+// Volume Conditions
+plotCondition(directionalFlowOscillator, volumeComponent > 50, "Volume: Bullish", "Volume: Bearish", atrl*3)
+
+// Price Conditions
+plotCondition(directionalFlowOscillator, priceComponent > 50, "Price: Bullish", "Price: Bearish", atrl*2.5)
+
+// Trend Conditions
+plotCondition(directionalFlowOscillator, trendComponent > 50, "Trend: Bullish", "Trend: Bearish", atrl*2)
+
+// Define bullish or bearish conditions based on the oscillator
+bullishCondition = ta.crossover(directionalFlowOscillator, ta.sma(directionalFlowOscillator, 13))
+bearishCondition = ta.crossunder(directionalFlowOscillator, ta.sma(directionalFlowOscillator, 13))
+
+// Improved Color Function based on Trend Direction and Strength
+colorFromTrend(diff) =>
+    normalizedIntensity = math.abs(diff) * 100 // Normalizing the difference
+    // normalizedIntensity := math.min(100, math.max(0, normalizedIntensity))
+    // Defining color based on trend direction
+    if diff > 0
+        // Bullish Trend: Increasing green intensity based on the strength
+        color.new(color.green, 100 - normalizedIntensity)
+    else if diff < 0
+        // Bearish Trend: Increasing red intensity based on the strength
+        color.new(color.red, 100 - normalizedIntensity)
+    else
+        // Neutral Trend: Representing with a yellow color to indicate uncertainty or weak trend
+        color.yellow
+
+// Applying the improved color function
+trendColor = colorFromTrend(normalizedDiff)
+
+bgcolor(trendColor, title="Directional Flow Background", offset=-1)
+
+// Assuming the overlay is true and you want to color the chart background:
+bgcolor(bullishCondition ? color.new(#01ff09, 90) : na, title="Bullish Background", offset=-1)
+bgcolor(bearishCondition ? color.new(#ff0000, 90) : na, title="Bearish Background", offset=-1)
