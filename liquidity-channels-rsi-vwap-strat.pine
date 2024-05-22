@@ -1,0 +1,74 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+//@version=5
+indicator("Combined Liquidity, Channels, RSI, and VWAP", overlay=true)
+
+// Inputs
+rsiPeriod = input(14, "RSI Period")
+emaPeriod = input(13, "EMA Period")
+maPeriod = input(30, "MA Period")
+vwapPeriod = input(14, "VWAP Period")
+stdDevMult = input(1.0, "Standard Deviation Multiplier")
+
+// CVD, Delta Volume, VRVP, Footprint
+[cvdUp, cvdDown] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+cvd = cvdUp - cvdDown
+delta = volume * (close > open ? 1 : close < open ? -1 : 0)
+[poc, valueAreaHigh, valueAreaLow] = request.security(syminfo.tickerid, timeframe.period, expression=[close, high, low], lookahead=barmerge.lookahead_on)
+
+// Keltner and Donchian Channels
+kellPeriod = input(20, "Keltner Period")
+kellMultiplier = input(2.0, "Keltner Multiplier")
+kellBasis = ta.ema(close, kellPeriod)
+kellDev = kellMultiplier * ta.atr(kellPeriod)
+kellUpper = kellBasis + kellDev
+kellLower = kellBasis - kellDev
+donPeriod = input(20, "Donchian Period")
+donUpper = ta.highest(high, donPeriod)
+donLower = ta.lowest(low, donPeriod)
+
+// Starc RSI and Composite Index RSI
+rsiSrc = input(close, "RSI Source")
+rsi = ta.rsi(rsiSrc, rsiPeriod)
+compRsi = (rsi + ta.rsi(volume, rsiPeriod)) / 2
+starcBandMultiplier = input(2.0, "Starc Band Multiplier")
+starcBasis = ta.sma(rsi, rsiPeriod)
+starcDev = starcBandMultiplier * ta.stdev(rsi, rsiPeriod)
+starcUpper = starcBasis + starcDev
+starcLower = starcBasis - starcDev
+starcRsiUp = ta.crossover(rsi, starcUpper)
+starcRsiDown = ta.crossunder(rsi, starcLower)
+
+// VWAP and EMA/MA Cross
+vwap = ta.vwap(hlc3, vwapPeriod)
+vwapUpper = vwap + stdDevMult * ta.stdev(vwap, vwapPeriod)
+vwapLower = vwap - stdDevMult * ta.stdev(vwap, vwapPeriod)
+ema = ta.ema(close, emaPeriod)
+ma = ta.sma(close, maPeriod)
+emaMaCross = ta.crossover(ema, ma)
+
+// Plotting
+plot(cvd, "CVD", color=color.blue)
+plot(delta, "Delta Volume", color=color.orange)
+plot(poc, "POC", color=color.white, style=plot.style_circles)
+plot(valueAreaHigh, "Value Area High", color=color.green)
+plot(valueAreaLow, "Value Area Low", color=color.red)
+
+plot(kellUpper, "Keltner Upper", color=color.purple)
+plot(kellLower, "Keltner Lower", color=color.purple)
+plot(donUpper, "Donchian Upper", color=color.blue)
+plot(donLower, "Donchian Lower", color=color.blue)
+
+plot(rsi, "RSI", color=color.orange)
+plot(compRsi, "Composite RSI", color=color.yellow)
+plot(starcUpper, "Starc Upper", color=color.red)
+plot(starcLower, "Starc Lower", color=color.green)
+plotshape(starcRsiUp, title="Starc RSI Up", location=location.top, style=shape.triangleup, size=size.tiny, color=color.green)
+plotshape(starcRsiDown, title="Starc RSI Down", location=location.bottom, style=shape.triangledown, size=size.tiny, color=color.red)
+
+plot(vwap, "VWAP", color=color.fuchsia)
+plot(vwapUpper, "VWAP Upper", color=color.fuchsia, style=plot.style_circles)
+plot(vwapLower, "VWAP Lower", color=color.fuchsia, style=plot.style_circles)
+plot(ema, "EMA", color=color.blue)
+plot(ma, "MA", color=color.red)
+plotshape(emaMaCross, title="EMA/MA Cross", location=location.top, style=shape.circle, size=size.normal, color=color.blue)
