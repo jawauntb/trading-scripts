@@ -1,0 +1,184 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("Version Kappa: Composite Momo + Volume + Price Strategy", overlay=true, calc_on_every_tick=true)
+
+// Define constants for milliseconds conversion
+MS_IN_MIN = 60 * 1000
+MS_IN_HOUR = MS_IN_MIN * 60
+MS_IN_DAY = MS_IN_HOUR * 24
+
+// Function to determine higher timeframe
+htfStep() =>
+    tfInMs = timeframe.in_seconds() * 1000
+    string result = na
+    if tfInMs <= MS_IN_MIN
+        result := "60"
+    else if tfInMs < MS_IN_HOUR * 3
+        result := "D"
+    else if tfInMs <= MS_IN_HOUR * 12
+        result := "W"
+    else if tfInMs < MS_IN_DAY * 7
+        result := "M"
+    else
+        result := "12M"
+    result
+
+// Inputs
+rsiPeriod = input.int(14, "RSI Period")
+emaPeriod = input.int(15, "EMA Period")
+maPeriod = input.int(32, "MA Period")
+vwapPeriod = input.int(10, "VWAP Period")
+vwapBandMultiplier = input.float(0.5, "VWAP Band Multiplier")
+tprInput = input.int(8, "VRVP Ticks Per Row")
+cvdPersistencePeriods = input.int(4, "CVD Persistence Periods")
+higherTimeframe = htfStep()
+
+// CVD calculations
+[cvdUp, cvdDown] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+cvd = cvdUp - cvdDown
+cvdStdev = ta.stdev(cvd, 20)
+cvdBrightThreshold = cvdStdev * 2
+cvdBright = (cvd > cvdBrightThreshold) or (cvd < -cvdBrightThreshold)
+cvdPersistent = ta.barssince(not cvdBright) >= cvdPersistencePeriods
+
+// Composite RSI and Starc Bands calculations
+rsiSource = close
+rsiDelta = ta.rsi(rsiSource, rsiPeriod) - ta.rsi(rsiSource, rsiPeriod)[9]
+rsiSma = ta.sma(ta.rsi(rsiSource, 3), 3)
+compRsi = rsiDelta + rsiSma
+starcBandMultiplier = input.float(2.0, "Starc Band Multiplier")
+starcBasis = ta.sma(compRsi, rsiPeriod)
+starcDev = starcBandMultiplier * ta.stdev(compRsi, rsiPeriod)
+starcUpper = starcBasis + starcDev
+starcLower = starcBasis - starcDev
+
+// Composite RSI conditions
+compRsiUpperThreshold = input.int(110, "Composite RSI Upper Threshold")
+compRsiLowerThreshold = input.int(18, "Composite RSI Lower Threshold")
+compRsiBottomed = compRsi < compRsi[1] and compRsi > starcLower
+compRsiTopped = compRsi > compRsi[1] and compRsi < starcUpper
+compRsiCrossingUp = ta.crossover(compRsi, starcLower)
+compRsiCrossingDown = ta.crossunder(compRsi, starcUpper)
+
+// Higher Timeframe Confirmation
+[compRsiHigher, _] = request.security(syminfo.tickerid, higherTimeframe, [compRsi, close], lookahead=barmerge.lookahead_on)
+starcUpperHigher = ta.sma(compRsiHigher, rsiPeriod) + starcBandMultiplier * ta.stdev(compRsiHigher, rsiPeriod)
+starcLowerHigher = ta.sma(compRsiHigher, rsiPeriod) - starcBandMultiplier * ta.stdev(compRsiHigher, rsiPeriod)
+compRsiBottomedHigher = compRsiHigher < compRsiHigher[1] and compRsiHigher > starcLowerHigher
+compRsiToppedHigher = compRsiHigher > compRsiHigher[1] and compRsiHigher < starcUpperHigher
+
+// EMA/MA calculations
+ema = ta.ema(close, emaPeriod)
+ma = ta.sma(close, maPeriod)
+emaBullish = ema > ma * 1.01
+emaBearish = ema < ma * 0.99
+
+// VWAP calculation
+[vwap, vwapUpper, vwapLower] = ta.vwap(hlc3, true, vwapBandMultiplier)
+
+// VRVP calculation
+[poc, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[close, high, low], lookahead=barmerge.lookahead_on)
+[totalVolume, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[volume, high, low], lookahead=barmerge.lookahead_on)
+tpr = tprInput/syminfo.mintick
+vrvpUpperBound = poc + tpr * 1.2
+vrvpLowerBound = poc - tpr * 1.2
+
+// Footprint calculations
+fpAbovePriceBuy = request.security(syminfo.tickerid, timeframe.period, high, lookahead=barmerge.lookahead_on)
+fpAbovePriceSell = request.security(syminfo.tickerid, timeframe.period, low, lookahead=barmerge.lookahead_on)
+fpBelowPriceBuy = request.security(syminfo.tickerid, timeframe.period, high, lookahead=barmerge.lookahead_on)
+fpBelowPriceSell = request.security(syminfo.tickerid, timeframe.period, low, lookahead=barmerge.lookahead_on)
+fpAbovePrice = fpAbovePriceBuy - fpAbovePriceSell
+fpBelowPrice = fpBelowPriceBuy - fpBelowPriceSell
+fpAbovePriceDecreasing = fpAbovePrice < fpAbovePrice[1]
+fpBelowPriceDecreasing = fpBelowPrice > fpBelowPrice[1]
+
+// Volume Confirmation
+volumeMA = ta.sma(volume, 15)
+volumeConfirmation = volume > volumeMA
+
+// Market Regime
+maLong = ta.sma(close, 105)
+maShort = ta.sma(close, 24)
+maMedium = ta.sma(close, 50)
+trendingUp = maShort > maMedium and maMedium > maLong
+trendingDown = maShort < maMedium and maMedium < maLong
+
+// Signal conditions
+compRsiLongCondition = (compRsiBottomed and (compRsiCrossingUp or compRsi < compRsiUpperThreshold))
+compRsiShortCondition = (compRsiTopped and compRsiCrossingDown) or compRsi > (compRsiLowerThreshold*4)
+compRsiHigherLongCondition = compRsiBottomedHigher and compRsiHigher < (compRsiUpperThreshold*1.1)
+compRsiHigherShortCondition = compRsiToppedHigher and compRsiHigher > (compRsiLowerThreshold*2.8)
+
+// Composite RSI momentum conditions
+compRsiMomentumLongCondition = compRsiLongCondition or (compRsiHigherLongCondition and (compRsi > 67)) or ((compRsi > rsiSma) and compRsi > 46)
+compRsiMomentumShortCondition = compRsiShortCondition or compRsiHigherShortCondition
+
+// Trend condition
+trendCondition = (trendingUp or emaBullish) or (trendingDown and emaBearish)
+// Volume condition
+volumeCondition = (cvd > 0 and volumeConfirmation) or (volumeConfirmation and cvd < 0)
+
+// Price condition
+priceCondition = (close > (0.95* vwap)) or (close < 0.7*vwap)
+
+// Signal conditions
+// longCondition = compRsiMomentumLongCondition and volumeCondition and (priceCondition or trendCondition)  
+// shortCondition = compRsiMomentumShortCondition and volumeCondition and (priceCondition or trendCondition)
+// -------
+// longCondition = compRsiMomentumLongCondition and (volumeCondition or (trendCondition and priceCondition))
+// shortCondition = compRsiMomentumShortCondition and (volumeCondition or (trendCondition and priceCondition))
+
+longCondition = (compRsiMomentumLongCondition and volumeCondition and (priceCondition or trendCondition)) or (volumeCondition and compRsiCrossingUp and (priceCondition and trendCondition)) or (compRsi > rsiSma*1.15 and volumeCondition and (compRsi > 40 or (priceCondition or trendCondition)))
+shortCondition = (compRsiMomentumShortCondition and volumeCondition and trendCondition) or (volumeCondition and (trendCondition and (priceCondition or compRsiShortCondition)))  or (compRsi < rsiSma*.85 and volumeCondition and rsiSma <60 and (priceCondition or trendCondition))
+
+// Dynamic Stop Loss and Take Profit calculations
+atrPeriod = 13
+atrMultiplier = 2.0
+atr = ta.atr(atrPeriod)
+longStopLoss = strategy.position_avg_price - atrMultiplier * atr
+longTakeProfit = strategy.position_avg_price + atrMultiplier * atr
+shortStopLoss = strategy.position_avg_price + atrMultiplier * atr
+shortTakeProfit = strategy.position_avg_price - atrMultiplier * atr
+
+// Plotting signals
+plotshape(series=longCondition, title="Long Signal", location=location.belowbar, color=color.rgb(58, 255, 170), style=shape.triangleup, size=size.small)
+plotshape(series=shortCondition, title="Short Signal", location=location.abovebar, color=color.rgb(183, 12, 69), style=shape.triangledown, size=size.small)
+
+// Function to plot individual condition confirmations or breaks
+plotCondition(series, condition, labelTrue, labelFalse, yOffset) =>
+    var label myLabel = na
+    labelText = condition ? labelTrue : labelFalse
+    labelColor = condition ? color.new(color.green, 0) : color.new(color.red, 0)
+    
+    // Detect changes in the condition value
+    conditionChanged = ta.change(condition)
+    
+    if conditionChanged or barstate.islast
+        if (na(myLabel))
+            myLabel := label.new(x=time, y=series + yOffset, text=labelText, style=label.style_label_down, color=labelColor, size=size.small, textcolor=color.white, xloc=xloc.bar_time, yloc=yloc.price)
+        else
+            label.set_xy(myLabel, x=time, y=series + yOffset)
+            label.set_text(myLabel, text=labelText)
+            label.set_color(myLabel, color=labelColor)
+            label.set_textcolor(myLabel, color.white)
+    myLabel
+// Assuming atr is already calculated somewhere in your script
+atrl = ta.atr(14)
+
+// Check and plot each condition separately
+plotCondition(close, compRsiMomentumLongCondition, "Bullish Momentum Confirmed", "Momentum Broken: Bearish", atrl * 2.25)
+plotCondition(close, volumeCondition, "Bullish Volume Confirmed", "Volume Broken: Bearish", atrl * 1.75)
+plotCondition(close, priceCondition, "Bullish Price Confirmed", "Price Broken: Bearish", atrl * 1.2)
+plotCondition(close, trendCondition, "Bullish Trend Confirmed", "Trend Broken: Bearish", atrl * 0.75)
+
+// Strategy execution
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=longStopLoss, limit=longTakeProfit)
+    
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=shortStopLoss, limit=shortTakeProfit)
