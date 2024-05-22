@@ -1,0 +1,78 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("Version Alpha: Composite Momo + Volume + Price Strategy", overlay=true)
+
+// Inputs
+rsiPeriod = input(14, "RSI Period")
+emaPeriod = input(13, "EMA Period")
+maPeriod = input(30, "MA Period")
+vwapPeriod = input(14, "VWAP Period")
+stdDevMult = input(1.0, "Standard Deviation Multiplier")
+tprInput = input(8, "VRVP Ticks Per Row")
+
+// CVD
+[cvdUp, cvdDown] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+cvd = cvdUp - cvdDown
+
+// Composite RSI and Starc Bands
+rsiSource = close
+rsiDelta = ta.rsi(rsiSource, rsiPeriod) - ta.rsi(rsiSource, rsiPeriod)[9]
+rsiSma = ta.sma(ta.rsi(rsiSource, 3), 3)
+compRsi = rsiDelta + rsiSma
+starcBandMultiplier = input(2.0, "Starc Band Multiplier")
+starcBasis = ta.sma(compRsi, rsiPeriod)
+starcDev = starcBandMultiplier * ta.stdev(compRsi, rsiPeriod)
+starcUpper = starcBasis + starcDev
+starcLower = starcBasis - starcDev
+starcRsiUp = ta.crossover(compRsi, starcUpper)
+starcRsiDown = ta.crossunder(compRsi, starcLower)
+
+// EMA/MA Cross
+ema = ta.ema(close, emaPeriod)
+ma = ta.sma(close, maPeriod)
+emaMaCross = ta.crossover(ema, ma)
+
+// VWAP
+vwap = ta.vwap(hlc3, vwapPeriod)
+vwapUpper = vwap + stdDevMult * ta.stdev(vwap, vwapPeriod)
+vwapLower = vwap - stdDevMult * ta.stdev(vwap, vwapPeriod)
+
+// VRVP
+[poc, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[close, high, low], lookahead=barmerge.lookahead_on)
+[totalVolume, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[volume, high, low], lookahead=barmerge.lookahead_on)
+tpr = tprInput/syminfo.mintick
+vrvpUpperBound = poc + tpr * 0.8
+vrvpLowerBound = poc - tpr * 0.8
+
+// Footprint
+[fpAbovePriceBuy, fpAbovePriceSell] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+[fpBelowPriceBuy, fpBelowPriceSell] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+fpAbovePrice = fpAbovePriceBuy - fpAbovePriceSell
+fpBelowPrice = fpBelowPriceBuy - fpBelowPriceSell
+
+// Signal
+longSignal = (cvd > 0) and starcRsiUp and emaMaCross and (close > vwap) and (close < vrvpUpperBound) and (fpAbovePrice > 0)
+shortSignal = (cvd < 0) and starcRsiDown and not emaMaCross and (close < vwap) and (close > vrvpLowerBound) and (fpBelowPrice < 0)
+
+// Entry/Exit
+longCondition = longSignal and strategy.position_size == 0
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+
+shortCondition = shortSignal and strategy.position_size == 0
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+
+if (strategy.position_size > 0)
+    if (close < vwapLower) or (fpAbovePrice < 0)
+        strategy.close("Long", comment="Exit Long - Below VWAP Lower Band or Footprint Above Price is Bearish")
+    else if (close > vrvpUpperBound)
+        strategy.close("Long", comment="Exit Long - Above VRVP Upper Bound")
+
+if (strategy.position_size < 0)
+    if (close > vwapUpper) or (fpBelowPrice > 0)
+        strategy.close("Short", comment="Exit Short - Above VWAP Upper Band or Footprint Below Price is Bullish")
+    else if (close < vrvpLowerBound)
+        strategy.close("Short", comment="Exit Short - Below VRVP Lower Bound")
