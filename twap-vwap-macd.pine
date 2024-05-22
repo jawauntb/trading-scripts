@@ -1,0 +1,35 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator(title="TWAP VWAP EMA MACD", shorttitle="TVEM", overlay=false)
+
+// User inputs for EMA periods
+twapLength = input(12, title="TWAP EMA Length")
+vwapLength = input(26, title="VWAP EMA Length")
+signalLength = input(9, title="Signal EMA Length")
+
+// Define a resettable cumulative sum function
+rcum(x) =>
+    var float sum = na
+    sum := na(sum) or ta.change(year * 365 + dayofmonth) != 0 ? x : sum + x
+    sum
+
+// Calculate TWAP and its EMA
+twapPrice = (high + low + close) / 3
+twap = rcum(twapPrice) / rcum(1)
+twapEMA = ta.ema(twap, twapLength)
+
+// Calculate VWAP and its EMA
+typical_price = (high + low + close) / 3
+vwap = rcum(typical_price * volume) / rcum(volume)
+vwapEMA = ta.ema(vwap, vwapLength)
+
+// Calculate MACD and Signal Line
+macdLine = twapEMA - vwapEMA
+signalLine = ta.ema(macdLine, signalLength)
+
+// Plot the lines
+plot(macdLine, color=color.red, title="MACD Line")
+plot(signalLine, color=color.blue, title="Signal Line")
+hline(0, title="Zero Line", color=color.gray)
