@@ -1,0 +1,41 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("J's Composite Index", shorttitle="Comp Index", overlay=false)
+
+rsiSource = input(close, title="RSI Source")
+RSIDelta = ta.rsi(rsiSource, 14) - ta.rsi(rsiSource, 14)[1]
+RSIsma = ta.sma(ta.rsi(rsiSource, 3), 3)
+momentumRSI = RSIDelta + RSIsma
+
+sma13 = ta.sma(momentumRSI, 13)
+sma33 = ta.sma(momentumRSI, 33)
+
+// Plot the momentumRSI and its moving averages
+plot(momentumRSI, title="Momentum RSI", color=color.rgb(3, 242, 242), linewidth=3)
+plot(sma13, title="Momentum RSI SMA 13", color=color.rgb(251, 223, 18), linewidth=2)
+plot(sma33, title="Momentum RSI SMA 33", color=color.rgb(239, 0, 0), linewidth=1)
+
+// Define deeper colors conditionally
+deepGreen = color.new(color.green, 50)
+deepRed = color.new(color.red, 50)
+
+// Background colors based on conditions
+bgcolor(momentumRSI > sma13 ? (sma13 > sma33 ? deepGreen : color.new(color.green, 90)) : na, title="Above SMA 13", offset=-1)
+bgcolor(momentumRSI < sma13 ? (sma33 > sma13 ? deepRed : color.new(color.red, 90)) : na, title="Below SMA 13", offset=-1)
+
+// Special conditions
+bgcolor(momentumRSI > 100 ? color.rgb(5,130, 150, 5) : na, title="Above 100", offset=-1)
+bgcolor(momentumRSI > 85 and momentumRSI < 95 ? color.rgb(30,130, 90, 5) : na, title="b/w 85-95", offset=-1)
+bgcolor(momentumRSI > 75 and momentumRSI < 85 ? color.rgb(20,140, 80, 10) : na, title="b/w 75-85", offset=-1)
+bgcolor(momentumRSI > 65 and momentumRSI < 75 ? color.rgb(27,160, 70, 20) : na, title="b/w 65-75", offset=-1)
+bgcolor(momentumRSI > 55 and momentumRSI < 65  ? color.rgb(183,255, 50, 30) : na, title="b/w 55-65", offset=-1)
+bgcolor(momentumRSI > 45 and momentumRSI < 55  ? color.rgb(255,255, 44, 9) : na, title="b/w 45-55", offset=-1)
+bgcolor(momentumRSI > 35 and momentumRSI < 45  ? color.rgb(255,175, 40, 9) : na, title="b/w 35-45", offset=-1)
+bgcolor(momentumRSI > 25 and momentumRSI < 35  ? color.rgb(253,135, 35, 9) : na, title="b/w 25-35", offset=-1)
+bgcolor(momentumRSI > 15 and momentumRSI < 25  ? color.rgb(253,110, 28, 9) : na, title="b/w 15-25", offset=-1)
+bgcolor(momentumRSI > 5 and momentumRSI < 15  ? color.rgb(255,71, 26, 9) : na, title="b/w 5-15", offset=-1)
+bgcolor(momentumRSI > 0 and momentumRSI < 5  ? color.rgb(206,45,22, 9) : na, title="b/w 0-5", offset=-1)
+bgcolor(momentumRSI >-5 and momentumRSI < 0? color.rgb(170,0, 21, 9) : na, title="b/w 0-(-5)", offset=-1)
+bgcolor(momentumRSI > -20 and momentumRSI < -5  ? color.rgb(81,0, 10, 9) : na, title="b/w -5-(-20)", offset=-1)
