@@ -1,0 +1,33 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("NVDA Buy/Sell Strategy", shorttitle="NVDA Strategy", overlay=true, margin_long=50, margin_short=25)
+
+// Parameters
+time_window = input.int(12, title="Time Window", minval=10, maxval=15)
+ema_length = input.int(10, title="EMA Length")
+roc_length = input.int(10, title="ROC Length")
+atr_length = input.int(14, title="ATR Length")
+
+// Calculations
+price = close
+ema_price = ta.ema(price, ema_length)
+roc_val = ta.roc(price, roc_length)
+atr_val = ta.atr(atr_length)
+previous_atr = request.security(syminfo.tickerid, "D", atr_val[1])
+
+// Conditions
+longCondition = ta.crossover(price, ema_price) and roc_val > 0 and atr_val > previous_atr
+shortCondition = ta.crossunder(price, ema_price) and roc_val < 0 and atr_val > previous_atr
+
+// Plot
+plotshape(series=longCondition, title="Buy Signal", location=location.belowbar, color=color.green, style=shape.labelup, text="BUY")
+plotshape(series=shortCondition, title="Sell Signal", location=location.abovebar, color=color.red, style=shape.labeldown, text="SELL")
+
+// Strategy Execution
+if longCondition
+    strategy.entry("Buy", strategy.long)
+
+if shortCondition
+    strategy.close("Buy")
