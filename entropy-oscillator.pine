@@ -1,0 +1,27 @@
+//@version=5
+indicator(title="Pseudo-Entropy Oscillator with Standard Deviation", shorttitle="PEO_SD", overlay=false)
+
+entropyPeriod = input(3, title="Entropy Period")
+fastPeriod = input(13, title="Fast Period")
+slowPeriod = input(33, title="Slow Period")
+
+// Calculate pseudo-entropy using standard deviation
+pseudoEntropy = ta.stdev(close, entropyPeriod)
+
+// Calculate fast, medium and slow SMAs of pseudo-entropy
+fastSMA = ta.sma(pseudoEntropy, fastPeriod)
+mediumSMA = ta.sma(pseudoEntropy, entropyPeriod)
+slowSMA = ta.sma(pseudoEntropy, slowPeriod)
+
+// Normalize the values to an unbounded oscillator using Z-score normalization
+fastSMA_norm = 50 + ((fastSMA - ta.sma(fastSMA, fastPeriod)) / ta.stdev(fastSMA, fastPeriod)) * 10
+mediumSMA_norm = 50 + ((mediumSMA - ta.sma(mediumSMA, entropyPeriod)) / ta.stdev(mediumSMA, entropyPeriod)) * 10
+slowSMA_norm = 50 + ((slowSMA - ta.sma(slowSMA, slowPeriod)) / ta.stdev(slowSMA, slowPeriod)) * 10
+
+// Plot pseudo-entropy oscillator
+plot(fastSMA_norm, title="Fast Pseudo-Entropy", color=color.red)
+plot(mediumSMA_norm, title="Medium Pseudo-Entropy", color=color.orange)
+plot(slowSMA_norm, title="Slow Pseudo-Entropy", color=color.blue)
+hline(50, title="Mid Line", color=color.gray)
+hline(20, title="Lower Bound", color=color.gray)
+hline(80, title="Upper Bound", color=color.gray)
