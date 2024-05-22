@@ -1,0 +1,27 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("Buy Before Close, Sell After Open (NYSE)", overlay=true, default_qty_type=strategy.fixed)
+
+// Define session for NYSE
+sessionNY = input("0930-1600:12345", title="Session Input")
+
+// Define an anchor on session changes
+isNewSession() =>
+    timeframe.isdwm or (not na(time("1D", sessionNY, "America/New_York")) and na(time("1D[1]", sessionNY, "America/New_York"))) 
+
+var float buyPrice = na
+
+// Buy 10 minutes before the session ends
+if (hour(time("1", sessionNY, "America/New_York")) == 15 and minute(time("1", sessionNY, "America/New_York")) == 50) and isNewSession() 
+    strategy.entry("Buy", strategy.long, qty=4)
+    buyPrice := close
+
+// Sell 10 minutes after the session starts
+if (hour(time("1", sessionNY, "America/New_York")) == 9 and minute(time("1", sessionNY, "America/New_York")) == 40) and not na(buyPrice) 
+    strategy.close("Buy", qty=3)
+
+// Visual confirmation of buy and sell points
+plotshape(series=strategy.opentrades > 0 and isNewSession(), location=location.belowbar, color=color.green, style=shape.labelup, text="Buy")
+plotshape(series=strategy.opentrades == 0 and isNewSession(), location=location.abovebar, color=color.red, style=shape.labeldown, text="Sell")
