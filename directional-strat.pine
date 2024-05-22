@@ -1,0 +1,81 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("DX Strat", overlay=true, initial_capital=1000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+
+// ————————————————————— Composite RSI —————————————————————
+
+rsiSource = input(close, title="RSI Source")
+RSIDelta = ta.rsi(rsiSource, 14) - ta.rsi(rsiSource, 14)[1]
+RSIsma = ta.sma(ta.rsi(rsiSource, 3), 3)
+momentumRSI = RSIDelta + RSIsma
+sma13 = ta.sma(momentumRSI, 13)
+sma33 = ta.sma(momentumRSI, 33)
+
+// ————————————————————— EMA 13 and MA 30 —————————————————————
+
+ema13 = ta.ema(close, 13)
+ma30 = ta.sma(close, 30)
+
+// ————————————————————— Keltner Channel —————————————————————
+
+length = input.int(20, minval=1)
+mult = input(2.0, "Multiplier")
+src = input(close, title="Source")
+exp = input(true, "Use Exponential MA")
+BandsStyle = input.string("Average True Range", options=["Average True Range", "True Range", "Range"], title="Bands Style")
+atrlength = input(10, "ATR Length")
+
+ma = exp ? ta.ema(src, length) : ta.sma(src, length)
+rangema = BandsStyle == "True Range" ? ta.tr(true) : BandsStyle == "Average True Range" ? ta.atr(atrlength) : ta.rma(high - low, length)
+upper = ma + rangema * mult
+lower = ma - rangema * mult
+
+// ————————————————————— VWAP —————————————————————
+
+vwap = ta.vwap(hlc3)
+
+// ————————————————————— Trading Conditions —————————————————————
+
+longCondition1 = momentumRSI > 77
+shortCondition1 = momentumRSI < 25
+longCondition2 = ema13 > ma30
+shortCondition2 = ma30 > ema13
+longCondition3 = ta.highest(close, 30) > ta.highest(upper, 30)
+shortCondition3 = ta.lowest(close, 30) < ta.lowest(lower, 30) and strategy.position_size < 0
+longCondition4 = close > vwap and close[1] > vwap[1] and close[2] > vwap[2] and close[3] > vwap[3] and close[4] > vwap[4] and close[5] > vwap[5]
+shortCondition4 = close < vwap and close[1] < vwap[1] and close[2] < vwap[2] and close[3] < vwap[3] and close[4] < vwap[4] and close[5] < vwap[5] and close[6] < vwap[6] and close[7] < vwap[7]
+
+// ————————————————————— Entry and Exit —————————————————————
+
+var int longHoldPeriod = 8
+var int shortHoldPeriod = 5
+var int longEntryBar = 0
+var int shortEntryBar = 0
+
+if (longCondition1)
+    strategy.entry("Long", strategy.long)
+    longEntryBar := bar_index
+    if (longCondition2)
+        longHoldPeriod := longHoldPeriod + 1
+    if (shortCondition2)
+        longHoldPeriod := longHoldPeriod - 5
+    if (longCondition3)
+        longHoldPeriod := longHoldPeriod + 1
+    if (longCondition4)
+        longHoldPeriod := longHoldPeriod + 3
+else
+    if (strategy.position_size > 0 and bar_index >= longEntryBar + longHoldPeriod)
+        strategy.close("Long")
+
+if (shortCondition1)
+    strategy.entry("Short", strategy.short)
+    shortEntryBar := bar_index
+    if (shortCondition3)
+        shortHoldPeriod := shortHoldPeriod + 1
+    if (shortCondition4)
+        shortHoldPeriod := shortHoldPeriod + 1
+else
+    if (strategy.position_size < 0 and bar_index >= shortEntryBar + shortHoldPeriod)
+        strategy.close("Short")
