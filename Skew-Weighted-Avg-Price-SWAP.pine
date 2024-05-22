@@ -1,0 +1,53 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+
+//@version=5
+indicator("Skew Weighted Average Price (SWAP)", shorttitle="SWAP", overlay=true)
+
+// Define lengths for EMAs and other parameters
+SkewLength = 30
+alpha = 2.0/(1.0+SkewLength)
+
+deviation_max = 1.
+deviation_min = 1.
+trueRange = math.max(math.max(high - low, math.abs(high - close[1])), math.abs(low - close[1]))/close[1]
+
+var float deviation_max_series = na
+var float deviation_min_series = na
+
+deviation_max_series := alpha*(close > close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_max_series[1])
+deviation_min_series := alpha*(close < close[1] ? trueRange:0) + (1.0-alpha)*nz(deviation_min_series[1])
+
+// Calculate skew
+skew = deviation_max_series / deviation_min_series
+
+// Define thresholds
+highSkewThreshold = input(1.1, title="High skew threshold") // User can adjust these
+lowSkewThreshold = input(1.05, title="Low skew threshold") // User can adjust these
+
+// Define SWAP and its range
+var float SWAP = na
+var float rangeHigh = na
+var float rangeLow = na
+rangePercent = input(0.5, title="Range around SWAP (%)") // User can adjust this
+
+if skew > highSkewThreshold
+    SWAP := high
+    rangeHigh := SWAP * (1 + rangePercent / 100)
+    rangeLow := SWAP * (1 - rangePercent / 100)
+else if skew < lowSkewThreshold
+    SWAP := low
+    rangeHigh := SWAP * (1 + rangePercent / 100)
+    rangeLow := SWAP * (1 - rangePercent / 100)
+else
+    SWAP := close
+
+// Plotting
+p1 = plot(rangeHigh, title="SWAP High", color=color.rgb(38, 240, 223), linewidth=2, style=plot.style_linebr)
+p2 = plot(SWAP, title="SWAP", color=color.rgb(12, 106, 183), linewidth=2, style=plot.style_linebr)
+p3 = plot(rangeLow, title="SWAP Low", color=color.rgb(38, 240, 223), linewidth=2,  style=plot.style_linebr)
+
+fill(p1, p2, color=color.new(#1e9066, 70), title="Upper Range")
+fill(p2, p3, color=color.new(#425de6, 70), title="Lower Range")
+
