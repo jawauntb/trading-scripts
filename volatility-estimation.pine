@@ -1,0 +1,47 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0.
+// © jawauntb
+
+//@version=5
+indicator("Volatility Oscillator with Quick Estimate and Forecast", overlay=false)
+
+// Input parameters
+shortTermLength = input.int(13, minval=1, title="Short Term Length")
+mediumTermLength = input.int(20, minval=1, title="Medium Term Length")
+longTermLength = input.int(100, minval=1, title="Long Term Length")
+forecastLength = input.int(13, minval=1, title="Forecast Length") // Set forecast length to 13 days
+annualizationFactor = input.int(252, title="Annualization Factor") // Use 252 for trading days in a year
+
+// Fetch the most recent daily close prices
+dailyClose = request.security(syminfo.tickerid, "D", close)
+
+// Use the previous day's close in the morning until the current day's close is available
+intradayClose = close
+previousDailyClose = request.security(syminfo.tickerid, "D", close[1])
+
+// Calculate returns using the most recent completed daily close prices and intraday close prices
+dailyReturn = math.log(dailyClose / previousDailyClose)
+intradayReturn = math.log(intradayClose / previousDailyClose)
+
+// Calculate annualized volatilities
+shortTermVol = ta.stdev(intradayReturn, shortTermLength) * math.sqrt(annualizationFactor) * 100
+mediumTermVol = ta.stdev(intradayReturn, mediumTermLength) * math.sqrt(annualizationFactor) * 100
+longTermVol = ta.stdev(intradayReturn, longTermLength) * math.sqrt(annualizationFactor) * 100
+
+// Calculate quick and dirty estimate (daily return * 20)
+quickEstimateVol = ta.stdev(intradayReturn, shortTermLength) * 20 * 100
+
+// Calculate forecast volatility (proxy for next 13 days based on last 13 days)
+forecastVol = ta.stdev(intradayReturn, forecastLength) * math.sqrt(annualizationFactor) * 100
+
+// Plot the volatilities
+plot(shortTermVol, color=color.blue, title="Short-Term Volatility")
+plot(mediumTermVol, color=color.orange, title="Medium-Term Volatility")
+plot(longTermVol, color=color.red, title="Long-Term Volatility")
+plot(quickEstimateVol, color=color.purple, title="Quick Estimate Volatility")
+plot(forecastVol, color=color.teal, title="Forecast Volatility (Next 13 days)")
+
+// Optional: Plot as an oscillator
+hline(0, "Zero Line", color=color.gray)
+plot(shortTermVol - mediumTermVol, color=color.green, title="Short vs Medium Term Spread")
+plot(shortTermVol - longTermVol, color=color.purple, title="Short vs Long Term Spread")
+plot(mediumTermVol - longTermVol, color=color.yellow, title="Medium vs Long Term Spread")
