@@ -1,0 +1,45 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+strategy("Stock and NQ Futures Convergence Strategy", overlay=true)
+
+// Inputs
+rsiSource = input(close, title="RSI Source")
+rsiLength = input(14, title="RSI Length")
+rsiUpperThreshold = input(50, title="RSI Upper Threshold")
+rsiLowerThreshold = input(25, title="RSI Lower Threshold")
+
+// Calculate the composite RSI for the stock
+stockRSI = ta.rsi(rsiSource, rsiLength)
+
+// Calculate the composite RSI for the NQ futures
+nqRSI = request.security("NQ1!", timeframe.period, ta.rsi(close, rsiLength))
+
+// Short entry condition
+shortCondition = nqRSI < rsiLowerThreshold and stockRSI > rsiUpperThreshold
+
+// Long entry condition
+longCondition = nqRSI > rsiUpperThreshold and stockRSI < rsiLowerThreshold
+
+// Entry and exit signals
+shortEntry = shortCondition and strategy.position_size == 0
+shortExit = nqRSI > rsiUpperThreshold and strategy.position_size < 0
+longEntry = longCondition and strategy.position_size == 0
+longExit = nqRSI < rsiLowerThreshold and strategy.position_size > 0
+
+// Execute trades
+if shortEntry
+    strategy.entry("Short", strategy.short)
+else if shortExit
+    strategy.close("Short")
+else if longEntry
+    strategy.entry("Long", strategy.long)
+else if longExit
+    strategy.close("Long")
+
+// Plot signals
+plotshape(shortEntry, title="Short Entry", location=location.belowbar, style=shape.triangledown, size=size.small, color=color.red)
+plotshape(shortExit, title="Short Exit", location=location.abovebar, style=shape.triangleup, size=size.small, color=color.red)
+plotshape(longEntry, title="Long Entry", location=location.belowbar, style=shape.triangleup, size=size.small, color=color.green)
+plotshape(longExit, title="Long Exit", location=location.abovebar, style=shape.triangledown, size=size.small, color=color.green)
