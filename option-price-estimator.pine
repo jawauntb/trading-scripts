@@ -1,0 +1,71 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Advanced Option Price Estimator", overlay=true)
+
+// Inputs
+riskFreeRate = request.security("RFR:TICKER", "D", close) // Assuming a ticker for risk-free rate
+daysToExpiration = input.int(30, "Days to Expiration", step=1)
+volatilityPeriod = input.int(20, "Volatility Period", step=1)
+
+// Get the current price of the ticker
+tickerPrice = close
+
+// Function to fetch current market price of an option (placeholder)
+getMarketOptionPrice(callPut, strike, expiration) => na // Implement actual fetching logic
+
+// Function to calculate the PDF of the standard normal distribution
+norm_pdf(x) =>
+    (1 / sqrt(2 * pi)) * exp(-x * x / 2)
+
+// Vega calculation using Black-Scholes components
+calculateVega(s, k, t, r, v) =>
+    d1 = (log(s / k) + (r + v * v / 2) * t) / (v * sqrt(t))
+    s * sqrt(t) * norm_pdf(d1)
+
+// Example usage in the Newton-Raphson method for implied volatility calculation
+calculateImpliedVolatility(s, k, t, r, marketPrice, isCall) =>
+    sigma = 0.20 // Initial guess for implied volatility
+    for i = 0 to 100
+        price = bsm(s, k, t, r, sigma, isCall)
+        vega = calculateVega(s, k, t, r, sigma) // Vega calculation
+        diff = marketPrice - price
+        if abs(diff) < 0.0001
+            break
+        sigma := sigma + diff / vega
+    sigma
+
+
+// Function to calculate the BSM option price
+bsm(s, k, t, r, v, isCall) =>
+    d1 = (log(s / k) + (r + v * v / 2) * t) / (v * sqrt(t))
+    d2 = d1 - v * sqrt(t)
+    callPrice = s * norm_cdf(d1) - k * exp(-r * t) * norm_cdf(d2)
+    putPrice = k * exp(-r * t) * norm_cdf(-d2) - s * norm_cdf(-d1)
+    isCall ? callPrice : putPrice
+
+// Calculate the time to expiration in years
+timeToExpiration = daysToExpiration / 365
+
+// Calculate the strike prices at 1.5% increments
+increment = tickerPrice * 0.015
+strikePrice = tickerPrice - (tickerPrice % increment)
+maxStrikes = 20
+
+// Graphical representation using plot shapes instead of labels
+for i = 0 to maxStrikes
+    callStrike = strikePrice + i * increment
+    putStrike = strikePrice - i * increment
+
+    marketPriceCall = getMarketOptionPrice("call", callStrike, timeToExpiration)
+    marketPricePut = getMarketOptionPrice("put", putStrike, timeToExpiration)
+
+    impliedVolatilityCall = calculateImpliedVolatility(tickerPrice, callStrike, timeToExpiration, riskFreeRate, marketPriceCall, true)
+    impliedVolatilityPut = calculateImpliedVolatility(tickerPrice, putStrike, timeToExpiration, riskFreeRate, marketPricePut, false)
+
+    callPrice = bsm(tickerPrice, callStrike, timeToExpiration, riskFreeRate, impliedVolatilityCall, true)
+    putPrice = bsm(tickerPrice, putStrike, timeToExpiration, riskFreeRate, impliedVolatilityPut, false)
+
+    plotshape(series=callPrice, location=location.absolute, color=color.green, style=shape.triangledown, title="Call Price")
+    plotshape(series=putPrice, location=location.absolute, color=color.red, style=shape.triangleup, title="Put Price")
