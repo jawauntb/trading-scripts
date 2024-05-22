@@ -1,0 +1,149 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Hyper Flow Indicator", overlay=false)
+
+// Constants
+MS_IN_MIN = 60 * 1000
+MS_IN_HOUR = MS_IN_MIN * 60
+MS_IN_DAY = MS_IN_HOUR * 24
+
+// Inputs
+rsiPeriod = input.int(14, "RSI Period")
+emaPeriod = input.int(15, "EMA Period")
+maPeriod = input.int(32, "MA Period")
+vwapPeriod = input.int(10, "VWAP Period")
+vwapBandMultiplier = input.float(0.5, "VWAP Band Multiplier")
+tprInput = input.int(8, "VRVP Ticks Per Row")
+cvdPersistencePeriods = input.int(4, "CVD Persistence Periods")
+starcBandMultiplier = input.float(2.0, "Starc Band Multiplier")
+compRsiUpperThreshold = input.int(110, "Composite RSI Upper Threshold")
+compRsiLowerThreshold = input.int(18, "Composite RSI Lower Threshold")
+
+// Timeframe conversion
+htfStep() =>
+    tfInMs = timeframe.in_seconds() * 1000
+    string result = na
+    if tfInMs <= MS_IN_MIN
+        result := "60"
+    else if tfInMs < MS_IN_HOUR * 3
+        result := "D"
+    else if tfInMs <= MS_IN_HOUR * 12
+        result := "W"
+    else if tfInMs < MS_IN_DAY * 7
+        result := "M"
+    else
+        result := "12M"
+    result
+
+higherTimeframe = htfStep()
+
+// Calculations
+rsiSource = close
+rsiDelta = ta.rsi(rsiSource, rsiPeriod) - ta.rsi(rsiSource, rsiPeriod)[9]
+rsiSma = ta.sma(ta.rsi(rsiSource, 3), 3)
+compRsi = rsiDelta + rsiSma
+starcBasis = ta.sma(compRsi, rsiPeriod)
+starcDev = starcBandMultiplier * ta.stdev(compRsi, rsiPeriod)
+starcUpper = starcBasis + starcDev
+starcLower = starcBasis - starcDev
+compRsiBottomed = compRsi < compRsi[1] and compRsi > starcLower
+compRsiTopped = compRsi > compRsi[1] and compRsi < starcUpper
+compRsiCrossingUp = ta.crossover(compRsi, starcLower)
+compRsiCrossingDown = ta.crossunder(compRsi, starcUpper)
+
+[compRsiHigher, _] = request.security(syminfo.tickerid, higherTimeframe, [compRsi, close], lookahead=barmerge.lookahead_on)
+starcUpperHigher = ta.sma(compRsiHigher, rsiPeriod) + starcBandMultiplier * ta.stdev(compRsiHigher, rsiPeriod)
+starcLowerHigher = ta.sma(compRsiHigher, rsiPeriod) - starcBandMultiplier * ta.stdev(compRsiHigher, rsiPeriod)
+compRsiBottomedHigher = compRsiHigher < compRsiHigher[1] and compRsiHigher > starcLowerHigher
+compRsiToppedHigher = compRsiHigher > compRsiHigher[1] and compRsiHigher < starcUpperHigher
+
+// CVD calculations
+[cvdUp, cvdDown] = request.security(syminfo.tickerid, timeframe.period, expression=[high, low], lookahead=barmerge.lookahead_on)
+cvd = cvdUp - cvdDown
+cvdStdev = ta.stdev(cvd, 20)
+cvdBrightThreshold = cvdStdev * 2
+cvdBright = (cvd > cvdBrightThreshold) or (cvd < -cvdBrightThreshold)
+cvdPersistent = ta.barssince(not cvdBright) >= cvdPersistencePeriods
+
+ema = ta.ema(close, emaPeriod)
+ma = ta.sma(close, maPeriod)
+emaBullish = ema > ma * 1.01
+emaBearish = ema < ma * 0.99
+
+[vwap, vwapUpper, vwapLower] = ta.vwap(hlc3, true, vwapBandMultiplier)
+
+[poc, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[close, high, low], lookahead=barmerge.lookahead_on)
+[totalVolume, _, _] = request.security(syminfo.tickerid, timeframe.period, expression=[volume, high, low], lookahead=barmerge.lookahead_on)
+tpr = tprInput/syminfo.mintick
+vrvpUpperBound = poc + tpr * 1.2
+vrvpLowerBound = poc - tpr * 1.2
+
+fpAbovePriceBuy = request.security(syminfo.tickerid, timeframe.period, high, lookahead=barmerge.lookahead_on)
+fpAbovePriceSell = request.security(syminfo.tickerid, timeframe.period, low, lookahead=barmerge.lookahead_on)
+fpBelowPriceBuy = request.security(syminfo.tickerid, timeframe.period, high, lookahead=barmerge.lookahead_on)
+fpBelowPriceSell = request.security(syminfo.tickerid, timeframe.period, low, lookahead=barmerge.lookahead_on)
+fpAbovePrice = fpAbovePriceBuy - fpAbovePriceSell
+fpBelowPrice = fpBelowPriceBuy - fpBelowPriceSell
+fpAbovePriceDecreasing = fpAbovePrice < fpAbovePrice[1]
+fpBelowPriceDecreasing = fpBelowPrice > fpBelowPrice[1]
+
+volumeMA = ta.sma(volume, 15)
+volumeConfirmation = volume > volumeMA
+
+maLong = ta.sma(close, 105)
+maShort = ta.sma(close, 24)
+maMedium = ta.sma(close, 50)
+trendingUp = maShort > maMedium and maMedium > maLong
+trendingDown = maShort < maMedium and maMedium < maLong
+
+// Conditions
+compRsiLongCondition = (compRsiBottomed and (compRsiCrossingUp or compRsi < compRsiUpperThreshold))
+compRsiShortCondition = (compRsiTopped and compRsiCrossingDown) or compRsi > (compRsiLowerThreshold*4)
+compRsiHigherLongCondition = compRsiBottomedHigher and compRsiHigher < (compRsiUpperThreshold*1.1)
+compRsiHigherShortCondition = compRsiToppedHigher and compRsiHigher > (compRsiLowerThreshold*2.8)
+compRsiMomentumLongCondition = compRsiLongCondition or (compRsiHigherLongCondition and (compRsi > 67)) or ((compRsi > rsiSma) and compRsi > 46)
+compRsiMomentumShortCondition = compRsiShortCondition or compRsiHigherShortCondition
+trendCondition = (trendingUp or emaBullish) or (trendingDown and emaBearish)
+volumeCondition = (cvd > 0 and volumeConfirmation) or (volumeConfirmation and cvd < 0)
+priceCondition = (close > (0.95* vwap)) or (close < 0.7*vwap)
+
+// ATR
+atrl = ta.atr(14)
+
+// Momentum component
+momentumMin = 0
+momentumMax = 100
+momentumValue = (compRsi - momentumMin) / (momentumMax - momentumMin) * 100
+momentumDelta = momentumValue - momentumValue[9]
+momentumComponent = momentumValue + momentumDelta
+
+// Volume component
+volumeMin = -cvdBrightThreshold
+volumeMax = cvdBrightThreshold
+volumeValue = (cvd - volumeMin) / (volumeMax - volumeMin) * 100
+volumeDelta = volumeValue - volumeValue[9]
+volumeComponent = volumeValue + volumeDelta
+
+// Price component
+priceMin = low
+priceMax = high
+priceValue = (close - priceMin) / (priceMax - priceMin) * 100
+priceDelta = priceValue - priceValue[9]
+priceComponent = priceValue + priceDelta
+
+// Trend component
+trendMin = -100
+trendMax = 100
+trendValue = ((maShort - maLong) / maLong - trendMin) / (trendMax - trendMin) * 100
+trendDelta = trendValue - trendValue[9]
+trendComponent = trendValue + trendDelta
+
+// Combine components
+compositeOscillator = (momentumComponent + volumeComponent + priceComponent + trendComponent) / 4
+
+// Plot the oscillator and moving averages
+plot(compositeOscillator, color=color.blue, linewidth=3)
+plot(ta.sma(compositeOscillator, 13), color=color.yellow, linewidth=2)
+plot(ta.sma(compositeOscillator, 33), color=color.red, linewidth=2)
