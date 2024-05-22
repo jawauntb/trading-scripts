@@ -1,0 +1,113 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © jawauntb
+
+//@version=5
+indicator("Jawaun's Advanced Order Block Finder", overlay = true, max_labels_count = 500, max_lines_count = 500)
+
+
+// Inputs
+colors = input.string("LIGHT", "Color Scheme", options = ["DARK", "LIGHT"])
+periods = input.int(7, "Relevant Periods to identify OB", minval = 1)
+threshold = input.float(0.0, "Min. Percent move for valid OB", step = 0.1)
+bull_channels = input.int(10, "Number of Bullish Channels to show", minval = 1)
+bear_channels = input.int(10, "Number of Bearish Channels to show", minval = 1)
+show_labels = input(true, "Show Labels")
+show_mid_labels = input(true, "Show Mid Labels")
+extend_lines = input(true, "Extend Lines")
+
+// Color Scheme
+bullcolor = colors == "DARK" ? color.white : color.green
+bearcolor = colors == "DARK" ? color.blue : color.red
+transparencyValue = 70
+
+// Functions
+percentChange(price1, price2) =>
+    (price1 - price2) / price2 * 100
+
+isValidOB(ob_period, threshold) =>
+    percentChange(close[ob_period], close[1]) >= threshold or percentChange(close[1], close[ob_period]) >= threshold
+
+isBullishOB(periods) =>
+    close[periods + 1] < open[periods + 1] and ta.rising(close, periods)
+
+isBearishOB(periods) =>
+    close[periods + 1] > open[periods + 1] and ta.falling(close, periods)
+
+// Order Block Identification
+ob_period = periods + 1
+validOB = isValidOB(ob_period, threshold)
+bullishOB = validOB and isBullishOB(periods)
+bearishOB = validOB and isBearishOB(periods)
+
+// Order Block Levels
+OB_bull_high = bullishOB ? high[ob_period] : na
+OB_bull_low = bullishOB ? low[ob_period] : na
+OB_bull_mid = bullishOB ? (OB_bull_high + OB_bull_low) / 2 : na
+OB_bear_high = bearishOB ? high[ob_period] : na
+OB_bear_low = bearishOB ? low[ob_period] : na
+OB_bear_mid = bearishOB ? (OB_bear_high + OB_bear_low) / 2 : na
+
+// Plotting
+var bull_line_high = array.new_line()
+var bull_line_low = array.new_line()
+var bear_line_high = array.new_line()
+var bear_line_low = array.new_line()
+var bull_label = array.new_label()
+var bear_label = array.new_label()
+var bull_mid_label = array.new_label()
+var bear_mid_label = array.new_label()
+
+if bullishOB
+    line1 = line.new(bar_index[ob_period], OB_bull_high, bar_index + 1, OB_bull_high, color = bullcolor, width = 2, style = line.style_solid)
+    line2 = line.new(bar_index[ob_period], OB_bull_low, bar_index + 1, OB_bull_low, color = bullcolor, width = 2, style = line.style_solid)
+    array.unshift(bull_line_high, line1)
+    array.unshift(bull_line_low, line2)
+
+    if extend_lines
+        line.set_extend(line1, extend.right)
+        line.set_extend(line2, extend.right)
+
+    if show_mid_labels
+        mid_label = label.new(bar_index[ob_period], OB_bull_mid, "BullOB Mid", color = color.new(bullcolor, transparencyValue), style = label.style_label_center, textcolor = color.white, size = size.small)
+        array.unshift(bull_mid_label, mid_label)
+
+    if show_labels
+        label1 = label.new(bar_index[ob_period], OB_bull_high, "BullOB High", color = color.new(bullcolor, transparencyValue), style = label.style_label_down, textcolor = color.white, size = size.small)
+        label2 = label.new(bar_index[ob_period], OB_bull_low, "BullOB Low", color = color.new(bullcolor, transparencyValue), style = label.style_label_up, textcolor = color.white, size = size.small)
+        array.unshift(bull_label, label1)
+        array.unshift(bull_label, label2)
+
+if bearishOB
+    line3 = line.new(bar_index[ob_period], OB_bear_high, bar_index + 1, OB_bear_high, color = bearcolor, width = 2, style = line.style_solid)
+    line4 = line.new(bar_index[ob_period], OB_bear_low, bar_index + 1, OB_bear_low, color = bearcolor, width = 2, style = line.style_solid)
+    array.unshift(bear_line_high, line3)
+    array.unshift(bear_line_low, line4)
+
+    if extend_lines
+        line.set_extend(line3, extend.right)
+        line.set_extend(line4, extend.right)
+
+    if show_mid_labels
+        mid_label = label.new(bar_index[ob_period], OB_bear_mid, "BearOB Mid", color = color.new(bearcolor, transparencyValue), style = label.style_label_center, textcolor = color.white, size = size.small)
+        array.unshift(bear_mid_label, mid_label)
+
+    if show_labels
+        label3 = label.new(bar_index[ob_period], OB_bear_high, "BearOB High", color = color.new(bearcolor, transparencyValue), style = label.style_label_down, textcolor = color.white, size = size.small)
+        label4 = label.new(bar_index[ob_period], OB_bear_low, "BearOB Low", color = color.new(bearcolor, transparencyValue), style = label.style_label_up, textcolor = color.white, size = size.small)
+        array.unshift(bear_label, label3)
+        array.unshift(bear_label, label4)
+
+// Cleanup
+if array.size(bull_line_high) > bull_channels
+    line.delete(array.pop(bull_line_high))
+    line.delete(array.pop(bull_line_low))
+    label.delete(array.pop(bull_label))
+    label.delete(array.pop(bull_label))
+    label.delete(array.pop(bull_mid_label))
+
+if array.size(bear_line_high) > bear_channels
+    line.delete(array.pop(bear_line_high))
+    line.delete(array.pop(bear_line_low))
+    label.delete(array.pop(bear_label))
+    label.delete(array.pop(bear_label))
+    label.delete(array.pop(bear_mid_label))
